@@ -71,7 +71,6 @@
 
             status.innerText = "☁️ Streaming file securely to Cloudflare Worker...";
 
-            // Send raw binary directly in the body (Zero Base64 overhead / Zero memory crashes)
             const uploadRes = await fetch(WORKER_URL, {
                 method: 'POST',
                 headers: { 
@@ -93,17 +92,21 @@
                 throw new Error(uploadResult.error || 'Upload failed');
             }
 
-            status.innerText = "🚀 Grabbing OTA install manifest URL...";
-
+            status.innerText = "✅ Upload complete! Ready to install.";
             const plistUrl = uploadResult.plistUrl;
 
-            status.innerText = "✅ Done! Prompting iOS installation...";
-            window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
+            // Transform the button into a fresh install trigger with a clean user gesture context
+            btn.disabled = false;
+            btn.innerText = "📲 Tap Here to Trigger Install Popup";
+            btn.style.backgroundColor = "#16a34a"; // Green button for ready state
+            
+            btn.onclick = function() {
+                window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
+            };
 
         } catch (err) {
             status.innerText = "❌ Error: " + err.message;
             console.error(err);
-        } finally {
             btn.disabled = false;
         }
     }
