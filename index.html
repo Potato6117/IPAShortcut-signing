@@ -14,12 +14,6 @@
         button:hover { background: #28b84e; }
         .status { color: #ff9500; font-size: 14px; text-align: center; margin-top: 10px; font-weight: bold; }
     </style>
-    <!-- Imports the open-source zsign web compiler script -->
-    <script type="module">
-        import init, { WasmSigner } from 'https://jsdelivr.net';
-        window.initWasm = init;
-        window.WasmSigner = WasmSigner;
-    </script>
 </head>
 <body>
 
@@ -38,45 +32,48 @@
         <label>4. Certificate Password (Leave blank if none)</label>
         <input type="password" id="p12Password" placeholder="Enter certificate password">
 
-        <button onclick="processSigning()">Sign & Install App</button>
+        <button id="signBtn">Sign & Install App</button>
         <div id="statusBar" class="status"></div>
     </div>
 
-    <script>
+    <!-- The fixed module script imports and handles everything inside a single context block -->
+    <script type="module">
+        import init, { WasmSigner } from 'https://jsdelivr.net';
+
         const readFileAsBytes = (file) => new Promise((resolve) => {
             const reader = new FileReader();
             reader.onload = () => resolve(new Uint8Array(reader.result));
             reader.readAsArrayBuffer(file);
         });
 
-        async function processSigning() {
-            const ipaEl = document.getElementById('ipaFile').files[0];
-            const p12El = document.getElementById('p12File').files[0];
-            const provEl = document.getElementById('provFile').files[0];
+        document.getElementById('signBtn').addEventListener('click', async () => {
+            const ipaFiles = document.getElementById('ipaFile').files;
+            const p12Files = document.getElementById('p12File').files;
+            const provFiles = document.getElementById('provFile').files;
             const password = document.getElementById('p12Password').value;
             const status = document.getElementById('statusBar');
 
-            if (!ipaEl || !p12El || !provEl) {
+            if (ipaFiles.length === 0 || p12Files.length === 0 || provFiles.length === 0) {
                 alert('Please upload all three required files.');
                 return;
             }
 
             try {
-                status.innerText = "⚡ Initializing compiler core...";
-                await window.initWasm();
+                status.innerText = "⚡ Initializing core WebAssembly compiler...";
+                // Safely execute the imported initialization method inside the active module block
+                await init();
 
                 status.innerText = "📦 Unpacking and reading file binary streams...";
-                const ipaBytes = await readFileAsBytes(ipaEl);
-                const p12Bytes = await readFileAsBytes(p12El);
-                const provBytes = await readFileAsBytes(provEl);
+                const ipaBytes = await readFileAsBytes(ipaFiles[0]);
+                const p12Bytes = await readFileAsBytes(p12Files[0]);
+                const provBytes = await readFileAsBytes(provFiles[0]);
 
                 status.innerText = "✍️ Re-signing binary contents on local processor...";
-                const signer = new window.WasmSigner(p12Bytes, password, provBytes);
+                const signer = new WasmSigner(p12Bytes, password, provBytes);
                 const signedIpaBytes = signer.sign_ipa(ipaBytes);
 
                 status.innerText = "🚀 Deploying temporary installer configurations...";
                 
-                // Convert compiled byte bundle directly into an encrypted local data-blob url stream
                 const blob = new Blob([signedIpaBytes], { type: 'application/octet-stream' });
                 const blobUrl = URL.createObjectURL(blob);
 
@@ -105,7 +102,7 @@
                 <key>kind</key>
                 <string>software</string>
                 <key>title</key>
-                <string>${ipaEl.name.replace('.ipa', '')}</string>
+                <string>${ipaFiles[0].name.replace('.ipa', '')}</string>
             </dict>
         </dict>
     </array>
@@ -120,8 +117,9 @@
                 
             } catch (err) {
                 status.innerText = "❌ Error code signature match failed: " + err.message;
+                console.error(err);
             }
-        }
+        });
     </script>
 </body>
 </html>
