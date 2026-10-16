@@ -93,57 +93,11 @@
                 throw new Error(uploadResult.error || 'Upload failed');
             }
 
-            const publicIpaUrl = uploadResult.url;
+            status.innerText = "🚀 Grabbing OTA install manifest URL...";
 
-            status.innerText = "🚀 Generating OTA install manifest...";
-
-            const cleanFileName = ipaInput.files[0].name.replace('.ipa', '');
-            const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>items</key>
-    <array>
-        <dict>
-            <key>assets</key>
-            <array>
-                <dict>
-                    <key>kind</key>
-                    <string>software-package</string>
-                    <key>url</key>
-                    <string>${publicIpaUrl}</string>
-                </dict>
-            </array>
-            <key>metadata</key>
-            <dict>
-                <key>bundle-identifier</key>
-                <string>com.custom.sideloaded.${Math.floor(Math.random() * 10000)}</string>
-                <key>bundle-version</key>
-                <string>1.0</string>
-                <key>kind</key>
-                <string>software</string>
-                <key>title</key>
-                <string>${cleanFileName}</string>
-            </dict>
-        </dict>
-    </array>
-</dict>
-</plist>`;
-
-            const base64Plist = btoa(unescape(encodeURIComponent(plistTemplate)));
-            const dataUri = `data:text/xml;base64,${base64Plist}`;
+            const plistUrl = uploadResult.plistUrl;
 
             status.innerText = "✅ Done! Prompting iOS installation...";
-            window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(dataUri)}`;
+            window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
 
-        } catch (err) {
-            status.innerText = "❌ Error: " + err.message;
-            console.error(err);
-        } finally {
-            btn.disabled = false;
-        }
-    }
-</script>
-
-</body>
-</html>
+...
