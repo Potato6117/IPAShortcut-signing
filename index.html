@@ -9,7 +9,7 @@
         .card { background: #1c1c1e; padding: 25px; border-radius: 16px; max-width: 440px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.6); text-align: left; }
         h1 { font-size: 22px; color: #0a84ff; text-align: center; margin-bottom: 20px; }
         label { font-weight: bold; font-size: 13px; color: #aeaeae; display: block; margin-top: 15px; }
-        input[type="file"], input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin: 6px 0 12px 0; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; box-sizing: border-box; }
+        input[type="file"], input[type="password"] { width: 100%; padding: 12px; margin: 6px 0 12px 0; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; box-sizing: border-box; }
         button { background: #30d158; color: #fff; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 15px; }
         button:hover { background: #28b84e; }
         .status { color: #ff9500; font-size: 14px; text-align: center; margin-top: 10px; font-weight: bold; }
@@ -36,9 +36,8 @@
         <div id="statusBar" class="status"></div>
     </div>
 
-    <!-- The fixed module script imports and handles everything inside a single context block -->
     <script type="module">
-        import init, { WasmSigner } from 'https://jsdelivr.net';
+        import init, { WasmSigner } from './pkg/your_wasm_package.js';
 
         const readFileAsBytes = (file) => new Promise((resolve) => {
             const reader = new FileReader();
@@ -60,7 +59,6 @@
 
             try {
                 status.innerText = "⚡ Initializing core WebAssembly compiler...";
-                // Safely execute the imported initialization method inside the active module block
                 await init();
 
                 status.innerText = "📦 Unpacking and reading file binary streams...";
@@ -72,13 +70,29 @@
                 const signer = new WasmSigner(p12Bytes, password, provBytes);
                 const signedIpaBytes = signer.sign_ipa(ipaBytes);
 
-                status.innerText = "🚀 Deploying temporary installer configurations...";
+                status.innerText = "☁️ Uploading signed app to Litterbox (up to 1 GB)...";
                 
-                const blob = new Blob([signedIpaBytes], { type: 'application/octet-stream' });
-                const blobUrl = URL.createObjectURL(blob);
+                const formData = new FormData();
+                formData.append('reqtype', 'fileupload');
+                formData.append('time', '24h'); // File stays active for 24 hours
+                formData.append('fileToUpload', new Blob([signedIpaBytes], { type: 'application/octet-stream' }), ipaFiles[0].name);
 
+                const uploadRes = await fetch('https://litterbox.catbox.moe/resources/internals/api.php', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!uploadRes.ok) throw new Error('Upload failed');
+                const publicIpaUrl = (await uploadRes.text()).trim();
+
+                if (!publicIpaUrl.startsWith('http')) {
+                    throw new Error('Invalid URL returned from upload service');
+                }
+
+                status.innerText = "🚀 Generating installer manifest...";
+                
                 const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>items</key>
@@ -90,7 +104,7 @@
                     <key>kind</key>
                     <string>software-package</string>
                     <key>url</key>
-                    <string>${blobUrl}</string>
+                    <string>${publicIpaUrl}</string>
                 </dict>
             </array>
             <key>metadata</key>
@@ -112,11 +126,11 @@
                 const base64Plist = btoa(unescape(encodeURIComponent(plistTemplate)));
                 const dataUri = `data:text/xml;base64,${base64Plist}`;
                 
-                status.innerText = "✅ Complete! Check home screen.";
+                status.innerText = "✅ Complete! Prompting system installation...";
                 window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(dataUri)}`;
                 
             } catch (err) {
-                status.innerText = "❌ Error code signature match failed: " + err.message;
+                status.innerText = "❌ Error: " + err.message;
                 console.error(err);
             }
         });
