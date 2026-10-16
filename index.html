@@ -100,4 +100,14 @@
             status.innerText = "✅ Done! Prompting iOS installation...";
             window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(plistUrl)}`;
 
-...
+        } catch (err) {
+            status.innerText = "❌ Error: " + err.message;
+            console.error(err);
+        } finally {
+            btn.disabled = false;
+        }
+    }
+</script>
+
+</body>
+</html>
