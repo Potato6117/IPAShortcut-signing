@@ -3,46 +3,84 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal iOS OTA Installer Hub</title>
+    <title>Universal Web Sideload Hub</title>
     <style>
-        body { font-family: -apple-system, sans-serif; background: #000; color: #fff; padding: 40px 20px; text-align: center; }
-        .card { background: #1c1c1e; padding: 25px; border-radius: 15px; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); text-align: left; }
+        body { font-family: -apple-system, sans-serif; background: #000; color: #fff; padding: 30px 15px; text-align: center; }
+        .card { background: #1c1c1e; padding: 25px; border-radius: 16px; max-width: 440px; margin: 0 auto; box-shadow: 0 4px 20px rgba(0,0,0,0.6); text-align: left; }
         h1 { font-size: 22px; color: #0a84ff; text-align: center; margin-bottom: 20px; }
-        label { font-weight: bold; font-size: 14px; color: #aeaea3; }
-        input { width: 100%; padding: 12px; margin: 8px 0 18px 0; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; box-sizing: border-box; }
-        button { background: #30d158; color: #fff; border: none; padding: 14px; width: 100%; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+        label { font-weight: bold; font-size: 13px; color: #aeaeae; display: block; margin-top: 15px; }
+        input[type="file"], input[type="text"], input[type="password"] { width: 100%; padding: 12px; margin: 6px 0 12px 0; border-radius: 8px; border: 1px solid #3a3a3c; background: #2c2c2e; color: #fff; box-sizing: border-box; }
+        button { background: #30d158; color: #fff; border: none; padding: 15px; width: 100%; border-radius: 8px; font-weight: bold; font-size: 16px; cursor: pointer; margin-top: 15px; }
         button:hover { background: #28b84e; }
-        .footer { margin-top: 20px; font-size: 12px; color: #8e8e93; text-align: center; }
+        .status { color: #ff9500; font-size: 14px; text-align: center; margin-top: 10px; font-weight: bold; }
     </style>
+    <!-- Imports the open-source zsign web compiler script -->
+    <script type="module">
+        import init, { WasmSigner } from 'https://jsdelivr.net';
+        window.initWasm = init;
+        window.WasmSigner = WasmSigner;
+    </script>
 </head>
 <body>
+
     <div class="card">
-        <h1>Universal OTA Installer</h1>
+        <h1>On-Device Code Signer</h1>
         
-        <label>1. Signed IPA Direct Link</label>
-        <input type="url" id="ipaUrl" placeholder="https://domain.com">
+        <label>1. Select Application Binary (.ipa)</label>
+        <input type="file" id="ipaFile" accept=".ipa">
         
-        <label>2. App Display Name</label>
-        <input type="text" id="appName" placeholder="e.g., Spotify, E-Sign, Scarlet">
+        <label>2. Select Enterprise Key (.p12)</label>
+        <input type="file" id="p12File" accept=".p12">
         
-        <label>3. Bundle Identifier (Optional)</label>
-        <input type="text" id="bundleId" placeholder="e.g., com.developer.app">
+        <label>3. Select Provisioning Profile (.mobileprovision)</label>
+        <input type="file" id="provFile" accept=".mobileprovision">
         
-        <button onclick="triggerInstall()">Launch Installer Popup</button>
+        <label>4. Certificate Password (Leave blank if none)</label>
+        <input type="password" id="p12Password" placeholder="Enter certificate password">
+
+        <button onclick="processSigning()">Sign & Install App</button>
+        <div id="statusBar" class="status"></div>
     </div>
-    <p class="footer">Hosted securely on GitHub Pages over native HTTPS</p>
 
     <script>
-        function triggerInstall() {
-            const ipa = document.getElementById('ipaUrl').value.trim();
-            const name = document.getElementById('appName').value.trim() || "App";
-            // If they leave bundle blank, we generate a dummy one so iOS doesn't crash
-            const bundle = document.getElementById('bundleId').value.trim() || "com.universal.sideload." + Math.floor(Math.random() * 10000);
-            
-            if(!ipa) { alert('Please enter a valid signed IPA URL first.'); return; }
-            
-            // Build the dynamic plist using the custom inputs
-            const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+        const readFileAsBytes = (file) => new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(new Uint8Array(reader.result));
+            reader.readAsArrayBuffer(file);
+        });
+
+        async function processSigning() {
+            const ipaEl = document.getElementById('ipaFile').files[0];
+            const p12El = document.getElementById('p12File').files[0];
+            const provEl = document.getElementById('provFile').files[0];
+            const password = document.getElementById('p12Password').value;
+            const status = document.getElementById('statusBar');
+
+            if (!ipaEl || !p12El || !provEl) {
+                alert('Please upload all three required files.');
+                return;
+            }
+
+            try {
+                status.innerText = "⚡ Initializing compiler core...";
+                await window.initWasm();
+
+                status.innerText = "📦 Unpacking and reading file binary streams...";
+                const ipaBytes = await readFileAsBytes(ipaEl);
+                const p12Bytes = await readFileAsBytes(p12El);
+                const provBytes = await readFileAsBytes(provEl);
+
+                status.innerText = "✍️ Re-signing binary contents on local processor...";
+                const signer = new window.WasmSigner(p12Bytes, password, provBytes);
+                const signedIpaBytes = signer.sign_ipa(ipaBytes);
+
+                status.innerText = "🚀 Deploying temporary installer configurations...";
+                
+                // Convert compiled byte bundle directly into an encrypted local data-blob url stream
+                const blob = new Blob([signedIpaBytes], { type: 'application/octet-stream' });
+                const blobUrl = URL.createObjectURL(blob);
+
+                const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
 <plist version="1.0">
 <dict>
@@ -55,30 +93,34 @@
                     <key>kind</key>
                     <string>software-package</string>
                     <key>url</key>
-                    <string>${ipa}</string>
+                    <string>${blobUrl}</string>
                 </dict>
             </array>
             <key>metadata</key>
             <dict>
                 <key>bundle-identifier</key>
-                <string>${bundle}</string>
+                <string>com.custom.sideloaded.${Math.floor(Math.random() * 1000)}</string>
                 <key>bundle-version</key>
                 <string>1.0</string>
                 <key>kind</key>
                 <string>software</string>
                 <key>title</key>
-                <string>${name}</string>
+                <string>${ipaEl.name.replace('.ipa', '')}</string>
             </dict>
         </dict>
     </array>
 </dict>
 </plist>`;
 
-            // Base64 encode and push to the ITMS handler
-            const base64Plist = btoa(unescape(encodeURIComponent(plistContent)));
-            const dataUri = `data:text/xml;base64,${base64Plist}`;
-            
-            window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(dataUri)}`;
+                const base64Plist = btoa(unescape(encodeURIComponent(plistTemplate)));
+                const dataUri = `data:text/xml;base64,${base64Plist}`;
+                
+                status.innerText = "✅ Complete! Check home screen.";
+                window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(dataUri)}`;
+                
+            } catch (err) {
+                status.innerText = "❌ Error code signature match failed: " + err.message;
+            }
         }
     </script>
 </body>
