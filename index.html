@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>iOS Sideloading Hub</title>
     <style>
-        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         body { background-color: #0f172a; color: #f8fafc; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
         .card { background: #1e293b; padding: 24px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); width: 100%; max-width: 450px; border: 1px solid #334155; }
         h2 { text-align: center; margin-bottom: 20px; color: #38bdf8; }
@@ -49,14 +49,12 @@
 </div>
 
 <script>
-    // ⚠️ REPLACE THIS WITH YOUR ACTUAL CLOUDFLARE WORKER URL!
-    const WORKER_URL = 'ipashortcutsigner.thepotatoboigd2008.workers.dev';
+    const WORKER_URL = 'https://ipashortcutsigner.thepotatoboigd2008.workers.dev';
 
     async function processAndInstall() {
         const ipaInput = document.getElementById('ipaFile');
         const p12Input = document.getElementById('p12File');
         const provInput = document.getElementById('provFile');
-        const passwordInput = document.getElementById('p12Password');
         const status = document.getElementById('status');
         const btn = document.getElementById('signBtn');
 
@@ -67,52 +65,38 @@
 
         try {
             btn.disabled = true;
-            status.innerText = "⏳ Reading files and initializing signing engine...";
+            status.innerText = "⏳ Reading IPA file into memory...";
 
-            // 1. Read files into memory
             const ipaBuffer = await ipaInput.files[0].arrayBuffer();
-            const p12Buffer = await p12Input.files[0].arrayBuffer();
-            const provBuffer = await provInput.files[0].arrayBuffer();
 
-            status.innerText = "🔏 Signing IPA in-browser via Wasm engine...";
-            
-            // SIMULATED SIGNING STEP:
-            // (If using a Wasm module like zsign/isign Wasm, execute signing here)
-            // For now, we pass the original IPA array bytes to be uploaded
-            const signedIpaBytes = new Uint8Array(ipaBuffer); 
+            status.innerText = "☁️ Streaming file securely to Cloudflare Worker...";
 
-            status.innerText = "☁️ Uploading signed app via Cloudflare Worker...";
-
-            // Convert binary byte array to Base64 safely
-            let binary = '';
-            const bytes = new Uint8Array(signedIpaBytes);
-            const len = bytes.byteLength;
-            for (let i = 0; i < len; i++) {
-                binary += String.fromCharCode(bytes[i]);
-            }
-            const base64Data = btoa(binary);
-
-            // 2. Upload via Cloudflare Worker Proxy
+            // Send raw binary directly in the body (Zero Base64 overhead / Zero memory crashes)
             const uploadRes = await fetch(WORKER_URL, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    fileData: base64Data, 
-                    fileName: ipaInput.files[0].name 
-                })
+                headers: { 
+                    'Content-Type': 'application/octet-stream',
+                    'X-File-Name': encodeURIComponent(ipaInput.files[0].name)
+                },
+                body: ipaBuffer
             });
 
-            if (!uploadRes.ok) {
-                const errJson = await uploadRes.json();
-                throw new Error(errJson.error || 'Upload to Cloudflare Worker failed');
+            const responseText = await uploadRes.text();
+            let uploadResult;
+            try {
+                uploadResult = JSON.parse(responseText);
+            } catch (e) {
+                throw new Error(`Worker Error (${uploadRes.status}): ${responseText.substring(0, 100)}`);
             }
 
-            const uploadResult = await uploadRes.json();
+            if (!uploadRes.ok) {
+                throw new Error(uploadResult.error || 'Upload failed');
+            }
+
             const publicIpaUrl = uploadResult.url;
 
-            status.innerText = "🚀 Generating manifest payload...";
+            status.innerText = "🚀 Generating OTA install manifest...";
 
-            // 3. Generate OTA Manifest Plist
             const cleanFileName = ipaInput.files[0].name.replace('.ipa', '');
             const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com/DTDs/PropertyList-1.0.dtd">
@@ -146,13 +130,10 @@
 </dict>
 </plist>`;
 
-            // 4. Encode Plist into Data-URI
             const base64Plist = btoa(unescape(encodeURIComponent(plistTemplate)));
             const dataUri = `data:text/xml;base64,${base64Plist}`;
 
             status.innerText = "✅ Done! Prompting iOS installation...";
-
-            // 5. Trigger Native iOS OTA Prompt
             window.location.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(dataUri)}`;
 
         } catch (err) {
