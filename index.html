@@ -48,7 +48,7 @@
 
     <div class="group">
         <label>P12 Password</label>
-        <input type="password" id="p12Password" placeholder="Enter certificate password" autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+        <input type="text" id="p12Password" placeholder="Enter certificate password" style="-webkit-text-security: disc;" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-form-type="other">
     </div>
 
     <button id="signBtn" onclick="processAndInstall()">Upload & Prepare App</button>
