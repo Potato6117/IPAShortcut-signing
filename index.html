@@ -53,7 +53,7 @@
 
     <button id="signBtn" onclick="processAndInstall()">Upload & Prepare App</button>
     
-    <!-- True HTML Link required by iOS Safari for itms-services -->
+    <!-- Appears when ready while keeping all inputs active -->
     <a id="installLink" class="install-btn" href="#">📲 Tap Here to Install App</a>
 
     <div id="status"></div>
@@ -83,7 +83,6 @@
 
         try {
             btn.disabled = true;
-            installLink.style.display = 'none';
             status.innerText = "⏳ Reading IPA file into memory...";
 
             const ipaBuffer = await ipaInput.files[0].arrayBuffer();
@@ -112,11 +111,14 @@
                 throw new Error(uploadResult.error || 'Upload failed');
             }
 
-            status.innerText = "✅ Upload complete! Ready for installation.";
+            status.innerText = "✅ Ready! (Pick your next IPA below to keep mass signing)";
             
             installLink.href = `itms-services://?action=download-manifest&url=${encodeURIComponent(uploadResult.plistUrl)}`;
             installLink.style.display = 'block';
-            btn.style.display = 'none';
+            
+            // Re-enable the upload button and clear only the IPA file so you can fire the next one immediately
+            btn.disabled = false;
+            ipaInput.value = '';
 
         } catch (err) {
             status.innerText = "❌ Error: " + err.message;
